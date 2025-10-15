@@ -1,72 +1,77 @@
 # api.py
-import time
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
+import asyncio
+import uuid
+import os
 
-app = FastAPI(title="Lens Dust Backend")
+app = FastAPI()
 
-# -----------------------
 # Enable CORS
-# -----------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace "*" with your frontend URL in production
-    allow_credentials=True,
+    allow_origins=["*"],  # Adjust to your frontend URL if needed
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# -----------------------
-# Preview Dust Mask
-# -----------------------
+UPLOAD_DIR = "./uploads"
+PROCESSED_DIR = "./processed"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(PROCESSED_DIR, exist_ok=True)
+
+
 @app.post("/preview_dust_mask")
 async def preview_dust_mask(file: UploadFile = File(...)):
     """
-    Receive a video, analyze it, and return a preview JSON of the dust mask.
+    Accepts a video, analyzes dust/smears, and returns a preview mask URL.
     """
-    # Placeholder logic: return a dummy mask summary
-    return JSONResponse(
-        content={
-            "filename": file.filename,
-            "preview_mask": [
-                {"frame": 1, "dust_coords": [(100, 200), (150, 250)]},
-                {"frame": 2, "dust_coords": [(105, 205), (155, 255)]},
-            ],
-        }
-    )
+    # Save uploaded file
+    file_id = str(uuid.uuid4())
+    file_path = os.path.join(UPLOAD_DIR, f"{file_id}_{file.filename}")
+    with open(file_path, "wb") as f:
+        f.write(await file.read())
 
-# -----------------------
-# Clean Video Progress (SSE)
-# -----------------------
+    # TODO: Implement dust detection & generate mask image
+    # For now, generate a fake mask URL (replace with actual processing)
+    preview_mask_url = f"https://yourcdn.com/masks/{file_id}_mask.png"
+
+    return {"mask_url": preview_mask_url}
+
+
 @app.post("/clean_video_progress")
 async def clean_video_progress(file: UploadFile = File(...)):
     """
-    Simulate cleaning the video, returning a streaming SSE response
-    showing progress from 0 to 100%.
+    Accepts a video, cleans dust, and streams progress via SSE.
+    Returns a final JSON with `done: true` and `video_url`.
     """
+    # Save uploaded file
+    file_id = str(uuid.uuid4())
+    input_path = os.path.join(UPLOAD_DIR, f"{file_id}_{file.filename}")
+    with open(input_path, "wb") as f:
+        f.write(await file.read())
 
-    def progress_generator():
-        total_steps = 100
-        for i in range(total_steps + 1):
-            # Yield SSE data format: "data: <value>\n\n"
-            yield f"data: {i}\n\n"
-            time.sleep(0.05)  # simulate processing time
+    output_path = os.path.join(PROCESSED_DIR, f"{file_id}_cleaned.mp4")
 
-    return StreamingResponse(
-        progress_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-        },
-    )
+    async def progress_generator():
+        """
+        Yield SSE numeric progress, then final JSON with video URL
+        """
+        for progress in range(0, 101, 5):
+            await asyncio.sleep(0.1)  # simulate processing delay
+            yield f"data: {progress}\n\n"
 
+        # After processing, yield final JSON with video URL
+        video_url = f"https://yourcdn.com/processed/{file_id}_cleaned.mp4"
+        final_event = {"done": True, "video_url": video_url}
+        yield f"data: {final_event}\n\n"
 
-# -----------------------
-# Healthcheck / Root
-# -----------------------
-@app.get("/")
-async def root():
-    return {"message": "Lens Dust Backend Running!"}
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "Access-Control-Allow-Origin": "*",
+        "Content-Type": "text/event-stream",
+    }
+
+    return StreamingResponse(progress_generator(), headers=headers)
