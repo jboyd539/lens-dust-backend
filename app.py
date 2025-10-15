@@ -21,7 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# === Dust removal helper ===
+# === Dust removal helper function ===
 def remove_dust(frame, threshold=15, inpaint_radius=3):
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     _, mask = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
@@ -109,13 +109,12 @@ def download_file(filename: str):
         return FileResponse(file_path, filename="cleaned.mp4", media_type="video/mp4")
     return {"error": "File not found"}
 
-# === Run with correct port ===
+# === Run with dynamic Render port ===
 if __name__ == "__main__":
     import uvicorn
-    import os
     uvicorn.run(
         "app:app",
         host="0.0.0.0",
-        port=int(os.environ.get("PORT", 8000)),
+        port=int(os.environ.get("PORT", 8000)),  # Use Render's port
         reload=True
     )
