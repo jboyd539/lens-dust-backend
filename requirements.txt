@@ -1,7 +1,8 @@
 fastapi
 uvicorn
-opencv-python
 numpy
-ffmpeg-python
+opencv-python
 python-multipart
+ffmpeg-python
+
 
