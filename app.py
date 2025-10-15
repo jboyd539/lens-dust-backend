@@ -1,6 +1,7 @@
 # app.py
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 import numpy as np
 import cv2
 import tempfile
@@ -9,10 +10,10 @@ import os
 
 app = FastAPI()
 
-# === Enable CORS so Lovable frontend can call this API ===
+# === Enable CORS for Lovable frontend ===
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can replace "*" with your Lovable frontend URL
+    allow_origins=["*"],  # Replace "*" with your Lovable frontend URL if you want
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,13 +38,12 @@ async def clean_video(
         shutil.copyfileobj(file.file, temp_input)
         input_path = temp_input.name
 
-    # Output temporary file
     output_path = input_path.replace(".mp4", "_cleaned.mp4")
 
-    # Read video
+    # Process video
     cap = cv2.VideoCapture(input_path)
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    fps = cap.get(cv2.CAP_PROP_FPS)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30
     width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
@@ -58,13 +58,16 @@ async def clean_video(
     cap.release()
     out.release()
 
-    # Return cleaned video
-    return_file = open(output_path, "rb")
-    data = return_file.read()
-    return_file.close()
+    # Return cleaned video using StreamingResponse
+    def iterfile():
+        with open(output_path, "rb") as f:
+            yield from f
 
-    # Clean up temp files
+    # Clean up temp input/output after streaming
+    response = StreamingResponse(iterfile(), media_type="video/mp4",
+                                 headers={"Content-Disposition": f"attachment; filename=cleaned.mp4"})
+    
     os.remove(input_path)
     os.remove(output_path)
-
-    return data
+    
+    return response
